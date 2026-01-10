@@ -26,7 +26,22 @@ const LessonPage = () => {
         if (activeSectionIndex < sections.length - 1) {
             setActiveSectionIndex(prev => prev + 1);
         } else {
-            setActiveSectionIndex(null); // Finished lesson
+            // Finished lesson
+            setActiveSectionIndex(null);
+            // Check if there is a next lesson
+            const currentId = lesson.id;
+            const nextLesson = LESSONS.find(l => l.id === currentId + 1);
+            if (nextLesson) {
+                // Determine if we want to confirm or just go
+                if (window.confirm("Lesson Complete! Proceed to the next lesson?")) {
+                    navigate(`/lesson/${nextLesson.id}`);
+                } else {
+                    navigate('/study');
+                }
+            } else {
+                alert("Course Complete! Congratulations!");
+                navigate('/study');
+            }
         }
     };
 

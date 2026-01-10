@@ -7,6 +7,7 @@ export const useUser = () => useContext(UserContext);
 export const UserProvider = ({ children }) => {
     const [currentUser, setCurrentUser] = useState(null);
     const [progress, setProgress] = useState({});
+    const [loading, setLoading] = useState(true);
 
     // Load user from localStorage on init
     useEffect(() => {
@@ -18,6 +19,7 @@ export const UserProvider = ({ children }) => {
                 setProgress(JSON.parse(userProgress));
             }
         }
+        setLoading(false);
     }, []);
 
     const login = (username) => {
@@ -50,7 +52,7 @@ export const UserProvider = ({ children }) => {
     };
 
     return (
-        <UserContext.Provider value={{ currentUser, progress, login, logout, saveLessonProgress }}>
+        <UserContext.Provider value={{ currentUser, progress, login, logout, saveLessonProgress, loading }}>
             {children}
         </UserContext.Provider>
     );

@@ -8,9 +8,15 @@ import GamesPage from './pages/GamesPage';
 import GameBubbles from './components/games/GameBubbles';
 import TypingTestPage from './pages/TypingTestPage';
 import StatisticsPage from './pages/StatisticsPage';
+import LandingPage from './pages/LandingPage';
 
 const ProtectedRoute = ({ children }) => {
-  const { currentUser } = useUser();
+  const { currentUser, loading } = useUser();
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-screen">Loading...</div>; // Or a nice spinner
+  }
+
   if (!currentUser) {
     return <Navigate to="/login" replace />;
   }
@@ -30,6 +36,11 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/" element={
+        <ProtectedRoute>
+          <LandingPage />
+        </ProtectedRoute>
+      } />
       <Route path="/study" element={
         <ProtectedRoute>
           <DashboardPage />
@@ -66,7 +77,7 @@ function AppRoutes() {
         </ProtectedRoute>
       } />
 
-      <Route path="*" element={<Navigate to="/study" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
