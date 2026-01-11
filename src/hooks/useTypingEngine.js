@@ -140,6 +140,7 @@ export const useTypingEngine = (targetText, isInfinite = false) => {
         start,
         pause,
         resume,
-        startTime // Exposed for timer sync if needed
+        startTime, // Exposed for timer sync if needed
+        errorCount // EXPOSED for interval stats
     };
 };
