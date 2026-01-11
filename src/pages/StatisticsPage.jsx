@@ -3,6 +3,7 @@ import AppLayout from '../components/layout/AppLayout';
 import { useUser } from '../context/UserContext';
 import { BarChart2, Activity, Award } from 'lucide-react';
 import { LESSONS } from '../core/lessonData';
+import CourseProgressGraph from '../components/dashboard/CourseProgressGraph';
 
 const StatisticsPage = () => {
     const { progress } = useUser();
@@ -77,27 +78,15 @@ const StatisticsPage = () => {
                     </div>
                 </div>
 
-                {/* Simple Bar Chart */}
-                <div className="bg-white p-6 rounded-xl shadow border">
-                    <h2 className="text-xl font-bold mb-6">Course Progress</h2>
-                    <div className="h-64 flex items-end gap-2">
-                        {lessonStats.map(ls => (
-                            <div key={ls.id} className="flex-1 flex flex-col items-center group relative">
-                                <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 bg-gray-800 text-white text-xs p-2 rounded pointer-events-none transition-opacity z-10 w-32 text-center">
-                                    {ls.title}<br />{ls.wpm} WPM / {ls.acc}%
-                                </div>
-                                <div
-                                    className="w-full bg-blue-200 rounded-t transition-all duration-500 relative"
-                                    style={{ height: `${Math.min(ls.wpm * 2, 100)}%` }} // Scale factor
-                                >
-                                    {ls.wpm > 0 && <div className="absolute bottom-0 w-full bg-blue-500" style={{ height: `${ls.acc}%`, opacity: 0.5 }}></div>}
-                                </div>
-                                <p className="text-xs text-gray-500 mt-2 truncate w-full text-center">{ls.id}</p>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="mt-2 text-center text-xs text-gray-400">Lesson ID</div>
+                {/* Detailed Progress Graph */}
+                <div className="mb-8">
+                    <CourseProgressGraph />
                 </div>
+
+                {/* Legacy Bar Chart (Optional - keeping or removing? User said "add it". I'll keep the detailed breakdown as it shows per-lesson summary clearly, but maybe the new graph is better. Let's keep both for now or just put the new one effectively.) */
+                    /* Actually, let's Replace the "Simple Bar Chart" section completely as the new graph is much better looking. */
+                }
+
             </div>
         </AppLayout>
     );

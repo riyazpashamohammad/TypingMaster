@@ -11,6 +11,7 @@ import StatisticsPage from './pages/StatisticsPage';
 import LandingPage from './pages/LandingPage';
 import GameWordTris from './components/games/GameWordTris';
 import GameCloudRace from './components/games/GameCloudRace';
+import SettingsPage from './pages/SettingsPage';
 
 const ProtectedRoute = ({ children }) => {
   const { currentUser, loading } = useUser();
@@ -86,6 +87,11 @@ function AppRoutes() {
       <Route path="/stats" element={
         <ProtectedRoute>
           <StatisticsPage />
+        </ProtectedRoute>
+      } />
+      <Route path="/settings" element={
+        <ProtectedRoute>
+          <SettingsPage />
         </ProtectedRoute>
       } />
 

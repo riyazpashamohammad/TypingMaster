@@ -48,8 +48,32 @@ export const UserProvider = ({ children }) => {
         localStorage.setItem(`typing_master_progress_${currentUser}`, JSON.stringify(newProgress));
     };
 
+    // Settings
+    const [settings, setSettings] = useState({
+        sound: 'none', // none, mechanical, typewriter
+        theme: 'light'
+    });
+
+    useEffect(() => {
+        if (currentUser) {
+            const savedSettings = localStorage.getItem(`typing_master_settings_${currentUser}`);
+            if (savedSettings) setSettings(JSON.parse(savedSettings));
+        }
+    }, [currentUser]);
+
+    const updateSettings = (newSettings) => {
+        const updated = { ...settings, ...newSettings };
+        setSettings(updated);
+        localStorage.setItem(`typing_master_settings_${currentUser}`, JSON.stringify(updated));
+    };
+
+    const clearProgress = () => {
+        setProgress({});
+        localStorage.removeItem(`typing_master_progress_${currentUser}`);
+    };
+
     return (
-        <UserContext.Provider value={{ currentUser, progress, login, logout, saveLessonProgress, loading }}>
+        <UserContext.Provider value={{ currentUser, progress, login, logout, saveLessonProgress, loading, clearProgress, settings, updateSettings }}>
             {children}
         </UserContext.Provider>
     );
