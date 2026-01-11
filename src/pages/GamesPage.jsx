@@ -5,8 +5,8 @@ import { Link } from 'react-router-dom';
 
 const GAMES = [
     { id: 'bubbles', title: 'Bubbles', description: 'Pop bubbles by typing words before they reach the top.', icon: Gamepad2, color: 'bg-blue-500' },
-    { id: 'clouds', title: 'Cloud Race', description: 'Jump between clouds to win the race.', icon: Cloud, color: 'bg-purple-500' },
-    { id: 'tris', title: 'WordTris', description: 'Fit the blocks by typing fast.', icon: FileText, color: 'bg-green-500' },
+    { id: 'clouds', title: 'Neon Runner', description: 'Sprint through a cyberpunk city by smashing obstacles.', icon: Cloud, color: 'bg-purple-600' },
+    { id: 'tris', title: 'Cosmic Defense', description: 'Defend your base from incoming enemies in all directions.', icon: FileText, color: 'bg-indigo-600' },
 ];
 
 const GamesPage = () => {

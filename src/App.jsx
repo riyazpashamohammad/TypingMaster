@@ -9,6 +9,8 @@ import GameBubbles from './components/games/GameBubbles';
 import TypingTestPage from './pages/TypingTestPage';
 import StatisticsPage from './pages/StatisticsPage';
 import LandingPage from './pages/LandingPage';
+import GameWordTris from './components/games/GameWordTris';
+import GameCloudRace from './components/games/GameCloudRace';
 
 const ProtectedRoute = ({ children }) => {
   const { currentUser, loading } = useUser();
@@ -61,6 +63,16 @@ function AppRoutes() {
       <Route path="/games/bubbles" element={
         <ProtectedRoute>
           <GameModal><GameBubbles /></GameModal>
+        </ProtectedRoute>
+      } />
+      <Route path="/games/clouds" element={
+        <ProtectedRoute>
+          <GameModal><GameCloudRace /></GameModal>
+        </ProtectedRoute>
+      } />
+      <Route path="/games/tris" element={
+        <ProtectedRoute>
+          <GameModal><GameWordTris /></GameModal>
         </ProtectedRoute>
       } />
 
