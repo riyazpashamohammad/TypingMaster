@@ -36,16 +36,13 @@ export const UserProvider = ({ children }) => {
     };
 
     const saveLessonProgress = (lessonId, sectionId, stats) => {
-        // stats: { wpm, accuracy, duration }
-        const newProgress = { ...progress };
-
-        if (!newProgress[lessonId]) {
-            newProgress[lessonId] = {};
-        }
-
-        // Update section best
-        const key = `${lessonId}_${sectionId}`;
-        newProgress[key] = stats; // Simplification: just overwrite with latest or best
+        const newProgress = {
+            ...progress,
+            [lessonId]: {
+                ...(progress[lessonId] || {}),
+                [sectionId]: stats
+            }
+        };
 
         setProgress(newProgress);
         localStorage.setItem(`typing_master_progress_${currentUser}`, JSON.stringify(newProgress));

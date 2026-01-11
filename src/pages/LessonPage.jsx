@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LESSONS } from '../core/lessonData';
 import DrillScreen from '../components/typing/DrillScreen';
-import { Play, CheckCircle, Circle } from 'lucide-react';
+import { Play, CheckCircle, Circle, BarChart2, RotateCcw, ArrowRight } from 'lucide-react';
 import { useUser } from '../context/UserContext';
 import AppLayout from '../components/layout/AppLayout';
 
@@ -11,12 +11,42 @@ const LessonPage = () => {
     const navigate = useNavigate();
     const { progress } = useUser();
     const [activeSectionIndex, setActiveSectionIndex] = useState(null);
+    const [showResults, setShowResults] = useState(false);
 
     const lesson = LESSONS.find(l => l.id === parseInt(lessonId));
 
     if (!lesson) return <div>Lesson not found</div>;
 
     const sections = lesson.sections;
+
+    // Calculate Stats for Result Screen
+    const drillSections = sections.filter(s => s.type === 'drill');
+    const lessonProgress = progress[lesson.id] || {};
+
+    let totalWpm = 0;
+    let totalAcc = 0;
+    let drillsCount = 0;
+    const drillStats = [];
+
+    drillSections.forEach(ds => {
+        const stats = lessonProgress[ds.id];
+        if (stats) {
+            totalWpm += stats.wpm;
+            totalAcc += stats.accuracy;
+            drillsCount++;
+            drillStats.push({
+                name: ds.title.replace('Drill: ', '').replace('Drill', ''),
+                wpm: stats.wpm,
+                acc: stats.accuracy
+            });
+        } else {
+            drillStats.push({ name: ds.title, wpm: 0, acc: 0 });
+        }
+    });
+
+    const avgWpm = drillsCount > 0 ? Math.round(totalWpm / drillsCount) : 0;
+    const avgAcc = drillsCount > 0 ? Math.round(totalAcc / drillsCount) : 0;
+    const isPassed = avgAcc >= 95;
 
     const handleStartSection = (index) => {
         setActiveSectionIndex(index);
@@ -28,20 +58,7 @@ const LessonPage = () => {
         } else {
             // Finished lesson
             setActiveSectionIndex(null);
-            // Check if there is a next lesson
-            const currentId = lesson.id;
-            const nextLesson = LESSONS.find(l => l.id === currentId + 1);
-            if (nextLesson) {
-                // Determine if we want to confirm or just go
-                if (window.confirm("Lesson Complete! Proceed to the next lesson?")) {
-                    navigate(`/lesson/${nextLesson.id}`);
-                } else {
-                    navigate('/study');
-                }
-            } else {
-                alert("Course Complete! Congratulations!");
-                navigate('/study');
-            }
+            setShowResults(true);
         }
     };
 
@@ -49,14 +66,116 @@ const LessonPage = () => {
         setActiveSectionIndex(null);
     };
 
-    // If drill is active, show DrillScreen (Full coverage)
+    const handleRetry = () => {
+        setShowResults(false);
+        setActiveSectionIndex(0);
+    };
+
+    const handleNextLesson = () => {
+        const currentId = lesson.id;
+        const nextLesson = LESSONS.find(l => l.id === currentId + 1);
+        if (nextLesson) {
+            navigate(`/lesson/${nextLesson.id}`);
+            setShowResults(false);
+        } else {
+            navigate('/study'); // Or to a Course Completion page
+        }
+    };
+
+    // If drill is active, show DrillScreen
     if (activeSectionIndex !== null) {
         return (
             <DrillScreen
+                key={sections[activeSectionIndex].id}
                 section={sections[activeSectionIndex]}
                 onComplete={handleCompleteSection}
                 onClose={handleCloseDrill}
             />
+        );
+    }
+
+    // Result Screen
+    if (showResults) {
+        return (
+            <AppLayout>
+                <div className="flex flex-col items-center justify-center p-8 min-h-screen bg-slate-50">
+                    <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl overflow-hidden">
+                        {/* Header Status */}
+                        <div className={`p-8 text-center ${isPassed ? 'bg-green-600' : 'bg-red-500'} text-white`}>
+                            {isPassed ? <CheckCircle size={64} className="mx-auto mb-4 opacity-90" /> : <RotateCcw size={64} className="mx-auto mb-4 opacity-90" />}
+                            <h2 className="text-4xl font-bold mb-2">{isPassed ? "Lesson Mastered!" : "Keep Practicing"}</h2>
+                            <p className="text-xl opacity-90">{isPassed ? "You have met the accuracy requirements." : "You need 95% accuracy to advance."}</p>
+                        </div>
+
+                        <div className="p-8">
+                            {/* Stats Overview */}
+                            <div className="flex justify-center gap-12 mb-12">
+                                <div className="text-center">
+                                    <p className="text-gray-500 font-bold uppercase text-sm tracking-wider">Net Speed</p>
+                                    <p className="text-5xl font-bold text-gray-800">{avgWpm} <span className="text-lg text-gray-400">wpm</span></p>
+                                </div>
+                                <div className="hidden w-px bg-gray-200 md:block"></div>
+                                <div className="text-center">
+                                    <p className="text-gray-500 font-bold uppercase text-sm tracking-wider">Accuracy</p>
+                                    <p className={`text-5xl font-bold ${isPassed ? 'text-green-600' : 'text-red-500'}`}>{avgAcc}%</p>
+                                </div>
+                            </div>
+
+                            {/* Graph */}
+                            <div className="mb-10">
+                                <h3 className="text-lg font-bold text-gray-700 mb-6 flex items-center gap-2">
+                                    <BarChart2 size={20} /> Drill Performance
+                                </h3>
+                                <div className="h-48 flex items-end gap-4 border-b border-gray-200 pb-2">
+                                    {drillStats.map((d, i) => (
+                                        <div key={i} className="flex-1 flex flex-col items-center group relative h-full justify-end">
+                                            {/* Tooltip */}
+                                            <div className="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 bg-gray-900 text-white text-xs p-2 rounded pointer-events-none transition-opacity z-10 whitespace-nowrap">
+                                                {d.name}: {d.acc}% / {d.wpm} wpm
+                                            </div>
+
+                                            {/* Bar */}
+                                            <div className="w-full max-w-[60px] bg-gray-100 rounded-t-lg relative overflow-hidden h-full flex items-end">
+                                                <div
+                                                    className={`w-full transition-all duration-1000 ${d.acc >= 95 ? 'bg-blue-500' : 'bg-red-400'}`}
+                                                    style={{ height: `${d.acc}%` }}
+                                                ></div>
+                                            </div>
+                                            <p className="text-xs text-gray-400 mt-2 truncate w-full text-center">{i + 1}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex justify-end gap-4 border-t pt-8">
+                                <button
+                                    onClick={handleRetry}
+                                    className="px-6 py-3 border border-gray-300 text-gray-700 font-bold rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                                >
+                                    <RotateCcw size={18} /> Retry Lesson
+                                </button>
+
+                                {isPassed ? (
+                                    <button
+                                        onClick={handleNextLesson}
+                                        className="px-8 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all flex items-center gap-2"
+                                    >
+                                        Next Lesson <ArrowRight size={20} />
+                                    </button>
+                                ) : (
+                                    <button
+                                        disabled
+                                        className="px-8 py-3 bg-gray-200 text-gray-400 font-bold rounded-lg cursor-not-allowed flex items-center gap-2"
+                                    >
+                                        Next Lesson <ArrowRight size={20} />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </AppLayout>
         );
     }
 
@@ -76,9 +195,7 @@ const LessonPage = () => {
                     <div>
                         {sections.map((section, index) => {
                             // Check if completed
-                            // const isCompleted = progress[lesson.id]?.[section.id]; 
-                            // Simplification:
-                            const isCompleted = false;
+                            const isCompleted = !!(lessonProgress && lessonProgress[section.id]);
 
                             return (
                                 <div key={section.id} className="p-4 border-b last:border-0 hover:bg-gray-50 transition-colors flex items-center justify-between group">
