@@ -52,7 +52,43 @@ const LessonPage = () => {
         setActiveSectionIndex(index);
     };
 
-    const handleCompleteSection = () => {
+    const handleCompleteSection = (stats) => {
+        // Enforce 94% Accuracy Benchmark
+        if (stats && stats.accuracy < 94) {
+            // Failed
+            alert(`Accuracy too low (${stats.accuracy}%). You need 94% to proceed.`);
+            // Optionally we could show a nice modal here, but for now blocking alert is functional.
+            // We should probably reset the drill so they can try again immediately?
+            // Or just leave them on the DrillScreen to click retry?
+            // The DrillScreen actually unmounts if we change state? No, we are in DrillScreen.
+            // But DrillScreen called onComplete. 
+            // If we don't change `activeSectionIndex`, DrillScreen might be in a "finished" state?
+            // Current DrillScreen component doesn't have a "Failed" state internally, it just fires onComplete.
+            // So if we do nothing, the user is stuck on a finished drill screen?
+            // Ideally we should tell DrillScreen to reset? 
+            // Or we just re-mount it?
+
+            // Let's simpler: Close drill, show "Failed" message on LessonPage, or specific Failure Modal.
+            // For now, let's just alert and maybe restart the same section?
+            setActiveSectionIndex(prev => prev); // Trigger re-render? No, value same.
+
+            // Force remount by momentarily nulling?
+            // Or better: Show a "Result" overlay inside LessonPage on top of everything?
+            // Let's use window.confirm?
+
+            if (window.confirm(`Accuracy: ${stats.accuracy}%. Benchmark: 94%.\n\nYou must retry the section.`)) {
+                // Retry same section
+                // To reset DrillScreen, we can toggle index null then back? 
+                // Or key prop changes? Key is `sections[activeSectionIndex].id`. ID doesn't change.
+                // We need to force remount.
+                setActiveSectionIndex(null);
+                setTimeout(() => setActiveSectionIndex(activeSectionIndex), 50);
+            } else {
+                setActiveSectionIndex(null); // Return to menu
+            }
+            return;
+        }
+
         if (activeSectionIndex < sections.length - 1) {
             setActiveSectionIndex(prev => prev + 1);
         } else {

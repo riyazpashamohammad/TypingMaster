@@ -13,6 +13,9 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
     const [showPreInfo, setShowPreInfo] = useState(true);
     const [infoPage, setInfoPage] = useState(0); // For paginated info sections
 
+    // Results State
+    const [showResults, setShowResults] = useState(false);
+
     // Only drill type is infinite
     const isDrill = section.type === 'drill';
     const content = section.content || " ";
@@ -31,24 +34,22 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
 
     // Timer Logic (Refactored for Pause support)
     useEffect(() => {
-        if (showPreInfo || !isDrill || isPaused) return;
+        // If results are showing, stop timer interactions
+        if (showPreInfo || !isDrill || isPaused || showResults) return;
 
         // Ensure engine has started
         if (!engine.startTime) {
-            // We rely on engine.handleKeyPress to start it usually, 
-            // but if we pause, we need to manage time independently of engine.startTime absolute diff.
-            // Actually, engine.startTime is used for WPM. 
-            // If we pause, WPM calculation in engine might get messed up because it uses (now - start).
-            // We might need to correct engine's duration used for WPM?
-            // For now, let's focus on the Countdown Timer.
+            // Waiting for start
         }
 
         const interval = setInterval(() => {
             setTimeLeft((prev) => {
-                if (prev <= 1) { // Changed to <= 1 to catch the transition to 0 neatly
+                if (prev <= 1) {
                     clearInterval(interval);
+                    // Time is up!
                     saveLessonProgress(section.id.split('.')[0], section.id, statsRef.current);
-                    onComplete();
+                    // Show results instead of completing immediately
+                    setShowResults(true);
                     return 0;
                 }
                 return prev - 1;
@@ -56,11 +57,11 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [isDrill, showPreInfo, isPaused, onComplete, saveLessonProgress, section.id]); // Removed engine/stats from deps
+    }, [isDrill, showPreInfo, isPaused, showResults, saveLessonProgress, section.id]);
 
     // Auto-Pause Monitor
     useEffect(() => {
-        if (showPreInfo || isPaused || !isDrill) return;
+        if (showPreInfo || isPaused || !isDrill || showResults) return;
 
         const checkActivity = setInterval(() => {
             if (Date.now() - lastActivityRef.current > 15000) {
@@ -69,21 +70,22 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
         }, 1000);
 
         return () => clearInterval(checkActivity);
-    }, [isPaused, showPreInfo, isDrill]);
+    }, [isPaused, showPreInfo, isDrill, showResults]);
 
     // Sync Pause State with Engine for WPM correctness
     useEffect(() => {
-        if (isPaused) {
+        if (isPaused || showResults) {
             engine.pause();
         } else {
             engine.resume();
         }
-    }, [isPaused, engine]);
+    }, [isPaused, showResults, engine]);
 
     const [wrongKey, setWrongKey] = useState(null);
 
     // Keyboard Hook
     useEffect(() => {
+        // Space to start
         if (showPreInfo && section.type === 'drill') {
             const handleSpace = (e) => {
                 if (e.code === 'Space') {
@@ -94,6 +96,18 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
             };
             window.addEventListener('keydown', handleSpace);
             return () => window.removeEventListener('keydown', handleSpace);
+        }
+
+        // Space to continue from Results
+        if (showResults) {
+            const handleResultsSpace = (e) => {
+                if (e.code === 'Space' || e.key === 'Enter') {
+                    handleContinue();
+                    e.preventDefault();
+                }
+            };
+            window.addEventListener('keydown', handleResultsSpace);
+            return () => window.removeEventListener('keydown', handleResultsSpace);
         }
 
         const handleKeyDown = (e) => {
@@ -107,6 +121,9 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
                 return;
             }
 
+            // Don't type if showing results
+            if (showResults) return;
+
             lastActivityRef.current = Date.now();
 
             if (showPreInfo) {
@@ -116,8 +133,10 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
                     if (isPaginated && infoPage < content.length - 1) {
                         setInfoPage(prev => prev + 1);
                     } else {
-                        saveLessonProgress(section.id.split('.')[0], section.id, { wpm: 0, accuracy: 100 });
-                        onComplete();
+                        // Info sections are always "perfect" completion
+                        const stats = { wpm: 0, accuracy: 100 };
+                        saveLessonProgress(section.id.split('.')[0], section.id, stats);
+                        onComplete(stats);
                     }
                 }
                 return;
@@ -139,21 +158,12 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
             if (!expectedChar) return; // changing section or done
 
             // Check if match
-            // Note: engine handles \n as 'Enter' input usually, or just '\n'
-            // We need to match what the user types physically
-
             const isMatch = (inputKey === targetKey) || (targetKey === '\n' && inputKey === 'Enter');
 
             if (isMatch) {
                 setWrongKey(null);
                 playSound('click'); // Play click sound
                 engine.handleKeyPress(e.key);
-
-                // For non-drills check finish
-                if (!isDrill && engine.cursor + 1 >= (section.content?.length || 0)) {
-                    // Check completion
-                }
-
             } else {
                 // Wrong key!
                 e.preventDefault();
@@ -165,14 +175,19 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [engine, showPreInfo, onComplete, section, isDrill, infoPage, content, wrongKey]);
+    }, [engine, showPreInfo, onComplete, section, isDrill, infoPage, content, wrongKey, isPaused, showResults]);
 
-    // Separate effect for completion
+    // Separate effect for completion (Non-Drill)
     useEffect(() => {
-        if (!isDrill && engine.isFinished) {
-            onComplete();
+        if (!isDrill && engine.isFinished && !showResults) {
+            setShowResults(true);
         }
-    }, [engine.isFinished, isDrill, onComplete]);
+    }, [engine.isFinished, isDrill, showResults]);
+
+    const handleContinue = () => {
+        const finalStats = isDrill ? statsRef.current : { wpm: engine.wpm, accuracy: engine.accuracy };
+        onComplete(finalStats); // This triggers parent navigation
+    };
 
 
     // Active Logic
@@ -180,18 +195,7 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
     const currentChar = isDrill ? content[effectiveCursor] : (section.content ? section.content[engine.cursor] : null);
     const activeFinger = getFingerForChar(currentChar);
 
-    // ... (Info/New Keys render logic remains the same, skipping for brevity in this replace block if possible, but tool requires contiguous)
-    // Actually I can't skip the middle chunks easily with replace_file_content if I want to keep the file valid. 
-    // I will use `multi_replace_file_content` or just include the middle part if it's small? 
-    // It's large (lines 93-222).
-    // I will use `replace_file_content` just for the hook part, and then another for the render part.
-    // This call only targets the HOOK part (lines 42-85 replacement).
-
-    // WAIT. I used `replace_file_content`. I need to be careful. 
-    // The previous tool call was for `handleKeyDown` logic. 
-    // I will return the replacement just for that block.
-
-    // ... Existing Info Render Logic ...
+    // INFO / NEW KEYS RENDER
     if (section.type === 'info' || section.type === 'new_keys') {
         const content = section.content;
         const isPaginated = Array.isArray(content);
@@ -201,8 +205,9 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
             if (isPaginated && infoPage < content.length - 1) {
                 setInfoPage(prev => prev + 1);
             } else {
-                saveLessonProgress(section.id.split('.')[0], section.id, { wpm: 0, accuracy: 100 });
-                onComplete();
+                const stats = { wpm: 0, accuracy: 100 };
+                saveLessonProgress(section.id.split('.')[0], section.id, stats);
+                onComplete(stats);
             }
         };
 
@@ -240,7 +245,6 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
                                 />
                             </>
                         )}
-                        {/* If it's pure info, maybe show a generic graphic or nothing? For now keeping hands only for new_keys */}
                         {section.type === 'info' && (
                             <div className="w-full h-1 bg-gray-100 rounded mb-4"></div>
                         )}
@@ -273,11 +277,54 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
         );
     }
 
+    // RESULTS OVERLAY
+    if (showResults) {
+        const finalStats = isDrill ? statsRef.current : { wpm: engine.wpm, accuracy: engine.accuracy };
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 p-8">
+                <div className="bg-white p-10 rounded-2xl shadow-2xl max-w-md w-full text-center border border-gray-100 animate-in fade-in zoom-in duration-300">
+                    <h2 className="text-3xl font-bold text-gray-800 mb-6">Drill Complete!</h2>
+
+                    <div className="grid grid-cols-2 gap-6 mb-8">
+                        <div className="bg-blue-50 p-4 rounded-xl">
+                            <p className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">Speed</p>
+                            <p className="text-4xl font-bold text-blue-600">{finalStats.wpm} <span className="text-lg text-gray-400">wpm</span></p>
+                        </div>
+                        <div className="bg-blue-50 p-4 rounded-xl">
+                            <p className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">Accuracy</p>
+                            <p className={`text-4xl font-bold ${finalStats.accuracy >= 94 ? 'text-green-500' : 'text-red-500'}`}>
+                                {finalStats.accuracy}%
+                            </p>
+                        </div>
+                    </div>
+
+                    {finalStats.accuracy < 94 && (
+                        <div className="mb-6 p-3 bg-red-100 text-red-700 rounded-lg text-sm font-semibold">
+                            Goal: 94% Accuracy. Please Retry.
+                        </div>
+                    )}
+
+                    <div className="flex flex-col gap-3">
+                        <button
+                            onClick={handleContinue}
+                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-all transform hover:scale-105"
+                        >
+                            {finalStats.accuracy >= 94 ? 'Continue (Space)' : 'Finish'}
+                        </button>
+                        {/* Parent LessonPage handles retry logic if accuracy is low, so we just "Finish" via Continue. 
+                            However, user might want to simple Re-play here? 
+                            LessonPage handles the logic: if < 94, it alerts and asks retry. 
+                            So clicking Continue will trigger that alert. */}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     // Pre-Drill Info Modal (Screenshot Match)
     if (showPreInfo) {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-blue-50/50 p-4 relative">
-                {/* Background blurred or just modal */}
                 <div className="bg-white border border-green-400 rounded-lg shadow-2xl max-w-lg w-full overflow-hidden">
                     <div className="bg-gradient-to-r from-green-200 to-green-300 p-3 border-b border-green-400 font-bold text-gray-800 flex justify-between items-center">
                         <span>Drill Information</span>
@@ -330,10 +377,8 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
-    // Text Rendering Logic for "Big and Clear"
-    // We only show a limited window to focus the user (Short Bursts)
-    const WINDOW_SIZE = 15; // Shorter window to fit 8xl text on single line
-    const startWindow = engine.cursor; // Start EXACTLY at the cursor (hide past)
+    const WINDOW_SIZE = 15;
+    const startWindow = engine.cursor;
     const endWindow = startWindow + WINDOW_SIZE;
 
     const renderChar = (char, index, absoluteIndex) => {
@@ -343,25 +388,20 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
         let className = "inline-block transition-all duration-75 border-b-4 mx-1 ";
 
         if (status === 'current') {
-            // Current cursor highlight
             className += "text-blue-900 border-blue-600 scale-125 font-black transform origin-bottom ";
         } else {
-            // Future
             className += "text-gray-500 border-transparent opacity-80 ";
         }
 
         if (char === '\n') {
-            // Visible Enter Symbol
             return <span key={absoluteIndex} className={className + " text-gray-400 font-sans"}>↵</span>;
         }
 
-        // Handle space
         if (char === ' ') {
             return <span key={absoluteIndex} className={className + " w-12 text-center"}>&nbsp;</span>;
         } return <span key={absoluteIndex} className={className}>{char}</span>;
     };
 
-    // Sound Effects
     const playSound = (type) => {
         try {
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -380,10 +420,9 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
                 oscillator.start();
                 oscillator.stop(audioCtx.currentTime + 0.1);
             } else {
-                // Click sound
                 oscillator.type = 'sine';
                 oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
-                gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime); // Quieter click
+                gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
                 oscillator.start();
                 oscillator.stop(audioCtx.currentTime + 0.05);
@@ -399,7 +438,7 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
                 {Array.from({ length: WINDOW_SIZE }).map((_, i) => {
                     const absoluteIndex = startWindow + i;
                     const effectiveIdx = absoluteIndex % content.length;
-                    const char = content[effectiveIdx] || ' '; // Fallback safely
+                    const char = content[effectiveIdx] || ' ';
                     return renderChar(char, i, absoluteIndex);
                 })}
             </div>
@@ -408,9 +447,7 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
-            {/* LEFT PANE: Content & Keyboard */}
             <div className="flex-1 flex flex-col p-8 gap-4 relative">
-                {/* Paused Overlay */}
                 {isPaused && (
                     <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
                         <h2 className="text-4xl font-bold text-blue-900 mb-4">Drill Paused</h2>
@@ -425,12 +462,10 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
                     </div>
                 )}
 
-                {/* Text Area */}
                 <div className="flex-1 bg-white rounded-2xl shadow-lg border border-slate-200 flex items-center justify-center overflow-hidden relative min-h-[200px]">
                     {renderedContent}
                 </div>
 
-                {/* Keyboard & Hands Area */}
                 <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-4 flex flex-col items-center justify-center gap-4">
                     <div className="scale-90 origin-bottom">
                         <VirtualKeyboard
@@ -440,7 +475,6 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
                         />
                     </div>
 
-                    {/* Hands Overlay */}
                     <div className="scale-75 origin-top -mt-8">
                         <HandsOverlay
                             activeFinger={activeFinger}
@@ -450,7 +484,6 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
                 </div>
             </div>
 
-            {/* RIGHT PANE: Sidebar Stats */}
             <div className="w-80 bg-blue-100/50 border-l border-blue-200 p-6 flex flex-col justify-between">
                 <div>
                     <div className="flex justify-between items-center mb-6">
@@ -458,11 +491,9 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
                         <button onClick={onClose}><X size={20} className="text-gray-400 hover:text-red-500" /></button>
                     </div>
 
-                    {/* Bar Chart Placeholder */}
                     <div className="bg-white p-4 rounded-lg shadow-sm border border-blue-100 mb-8 h-48 flex items-end gap-1 justify-between">
-                        {/* Fake bars growing */}
                         {[...Array(10)].map((_, i) => {
-                            const height = Math.min(100, Math.max(20, (engine.wpm / 10) * (i + 1) + Math.random() * 20)); // Dynamic fake
+                            const height = Math.min(100, Math.max(20, (engine.wpm / 10) * (i + 1) + Math.random() * 20));
                             return (
                                 <div key={i} className={`w-full bg-blue-${i > 7 ? '200' : '100'} border border-blue-300 rounded-sm`} style={{ height: `${height}%` }}></div>
                             );
@@ -507,7 +538,7 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
 
                     <div className="space-y-3">
                         <button
-                            onClick={() => { saveLessonProgress(section.id.split('.')[0], section.id, { wpm: engine.wpm, accuracy: engine.accuracy }); onComplete(); }}
+                            onClick={() => { saveLessonProgress(section.id.split('.')[0], section.id, { wpm: engine.wpm, accuracy: engine.accuracy }); setShowResults(true); }}
                             className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg shadow hover:bg-blue-700 transition"
                         >
                             Next
