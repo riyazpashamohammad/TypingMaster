@@ -73,49 +73,66 @@ const KEYBOARD_LAYOUT = [
     ]
 ];
 
-const VirtualKeyboard = ({ activeKeys = [], pressedKey = null }) => {
+const VirtualKeyboard = ({ activeKeys = [], pressedKey = null, wrongKey = null }) => {
 
     // Helper to check if key is active
     const isActive = (k) => activeKeys.includes(k.key.toLowerCase()) || activeKeys.includes(k.code);
+    const isWrong = (k) => wrongKey === k.key.toLowerCase() || wrongKey === k.code;
 
-    // Determine color based on active
-    // Standard key: bg-white or bg-slate-100
-    // Active key: bg-green-500 text-white (as per screenshot which has green/red/blue/purple)
-    // Actually screenshot shows colored keys based on FINGER mapping.
-    // L_Pinky: Blue, L_Ring: Red, L_Middle: Green, L_Index: Purple?
-    // Let's implement roughly that coloring if "ShowHelp" is on, OR just highlight active key.
-    // For now, I'll just highlight the ACTIVE target key in Green or Blue.
+    // Finger color mapping
+    const getFingerColor = (finger) => {
+        if (!finger) return 'bg-white';
+        if (finger.includes('Pinky')) return 'bg-blue-100 border-blue-200';
+        if (finger.includes('Ring')) return 'bg-red-100 border-red-200';
+        if (finger.includes('Middle')) return 'bg-green-100 border-green-200';
+        if (finger.includes('Index')) return 'bg-purple-100 border-purple-200';
+        return 'bg-white'; // Default / Thumbs
+    };
 
     const getKeyStyle = (k) => {
         const isTarget = isActive(k);
+        const isWrongKey = isWrong(k);
         const isPressed = pressedKey === k.key || pressedKey === k.code;
 
         // Base style
-        let style = "h-10 m-0.5 rounded shadow flex items-center justify-center font-medium text-sm transition-all ";
+        let style = "h-12 m-0.5 rounded shadow flex items-center justify-center font-bold text-lg transition-all relative ";
 
         if (k.width) style += k.width + " ";
-        else style += "w-10 ";
+        else style += "w-12 ";
 
-        if (isTarget) {
-            style += "bg-blue-500 text-white translate-y-0.5 shadow-none "; // Highlight active target
+        if (isWrongKey) {
+            style += "bg-red-500 text-white border-red-700 "; // Error state
+        } else if (isTarget) {
+            // Target key - Use strong finger color
+            if (k.finger && k.finger.includes('Pinky')) style += "bg-blue-500 text-white border-blue-700 ";
+            else if (k.finger && k.finger.includes('Ring')) style += "bg-red-500 text-white border-red-700 ";
+            else if (k.finger && k.finger.includes('Middle')) style += "bg-green-500 text-white border-green-700 ";
+            else if (k.finger && k.finger.includes('Index')) style += "bg-purple-500 text-white border-purple-700 ";
+            else style += "bg-blue-500 text-white border-blue-700 "; // Fallback
         } else if (isPressed) {
             style += "bg-gray-300 translate-y-0.5 shadow-none ";
         } else {
-            style += "bg-white border-b-2 border-gray-200 text-gray-700 ";
+            // Default styling with subtle finger hints
+            style += `${getFingerColor(k.finger)} border-b-4 text-gray-700 `;
         }
 
         return style;
     };
 
     return (
-        <div className="flex flex-col items-center justify-center p-4 rounded-lg bg-blue-50">
-            <div className="flex flex-col">
+        <div className="flex flex-col items-center justify-center p-6 rounded-xl bg-slate-100 shadow-inner border border-slate-200">
+            <div className="flex flex-col gap-1">
                 {KEYBOARD_LAYOUT.map((row, i) => (
-                    <div key={i} className="flex justify-center w-full">
+                    <div key={i} className="flex justify-center w-full gap-1">
                         {row.map((k, j) => (
                             <div key={j} className={getKeyStyle(k)}>
                                 {k.key === 'Space' ? '' : k.key}
-                                {k.shift && <span className="absolute text-xs top-1 left-1 opacity-60">{k.shift}</span>}
+                                {k.shift && <span className="absolute text-xs top-1 left-1 opacity-60 font-normal">{k.shift}</span>}
+                                {isWrong(k) && (
+                                    <div className="absolute inset-0 flex items-center justify-center text-red-900 opacity-50 text-4xl font-bold select-none overflow-hidden">
+                                        /
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>

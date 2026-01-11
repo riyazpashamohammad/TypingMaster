@@ -194,26 +194,50 @@ const LessonPage = () => {
                     </div>
                     <div>
                         {sections.map((section, index) => {
-                            // Check if completed
                             const isCompleted = !!(lessonProgress && lessonProgress[section.id]);
 
+                            // Check if locked:
+                            // Locked if it's not the first one AND the previous one is NOT completed
+                            let isLocked = false;
+                            if (index > 0) {
+                                const prevSection = sections[index - 1];
+                                const prevCompleted = !!(lessonProgress && lessonProgress[prevSection.id]);
+                                if (!prevCompleted) {
+                                    isLocked = true;
+                                }
+                            }
+
                             return (
-                                <div key={section.id} className="p-4 border-b last:border-0 hover:bg-gray-50 transition-colors flex items-center justify-between group">
+                                <div key={section.id} className={`p-4 border-b last:border-0 transition-colors flex items-center justify-between group ${isLocked ? 'bg-gray-50 opacity-60' : 'hover:bg-gray-50'}`}>
                                     <div className="flex items-center gap-4">
-                                        {isCompleted ? <CheckCircle className="text-green-500" size={24} /> : <Circle className="text-gray-300" size={24} />}
+                                        {isCompleted ? (
+                                            <CheckCircle className="text-green-500" size={24} />
+                                        ) : isLocked ? (
+                                            <div className="w-6 h-6 rounded-full border-2 border-gray-300 flex items-center justify-center">
+                                                <div className="w-2 h-2 bg-gray-300 rounded-full" />
+                                            </div>
+                                        ) : (
+                                            <Circle className="text-gray-300" size={24} />
+                                        )}
                                         <div>
-                                            <p className="font-medium text-gray-800 group-hover:text-blue-600">{section.id} {section.title}</p>
-                                            <p className="text-xs text-gray-500 uppercase tracking-wider">{section.type.replace('_', ' ')}</p>
+                                            <p className={`font-medium ${isLocked ? 'text-gray-400' : 'text-gray-800 group-hover:text-blue-600'}`}>{section.id} {section.title}</p>
+                                            <p className="text-xs text-gray-400 uppercase tracking-wider">{section.type.replace('_', ' ')}</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-4">
                                         <span className="text-sm text-gray-400">{section.duration}</span>
-                                        <button
-                                            onClick={() => handleStartSection(index)}
-                                            className="px-4 py-2 rounded-full bg-blue-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2 hover:bg-blue-700"
-                                        >
-                                            <Play size={16} fill="currentColor" /> Start
-                                        </button>
+                                        {isLocked ? (
+                                            <button disabled className="px-4 py-2 rounded-full bg-gray-200 text-gray-400 cursor-not-allowed flex items-center gap-2">
+                                                Locked
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => handleStartSection(index)}
+                                                className="px-4 py-2 rounded-full bg-blue-600 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2 hover:bg-blue-700"
+                                            >
+                                                <Play size={16} fill="currentColor" /> Start
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             );

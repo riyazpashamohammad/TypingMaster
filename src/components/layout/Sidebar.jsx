@@ -31,8 +31,8 @@ const Sidebar = () => {
                         <Keyboard size={24} />
                     </div>
                     <div>
-                        <p className="text-lg font-bold leading-tight">TypingMaster</p>
-                        <p className="text-xs text-blue-100 opacity-80">Pro Version</p>
+                        <p className="text-lg font-bold leading-tight">Riyaz's Typing Master</p>
+                        <p className="text-xs text-blue-100 opacity-80">by LLM</p>
                     </div>
                 </div>
             </div>

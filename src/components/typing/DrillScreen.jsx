@@ -20,24 +20,67 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
     const engine = useTypingEngine(content, isDrill);
     const { saveLessonProgress } = useUser();
 
-    // Timer Logic
+    const [isPaused, setIsPaused] = useState(false);
+    const lastActivityRef = useRef(Date.now());
+
+    // Refs for stats to access inside Timer without re-triggering it
+    const statsRef = useRef({ wpm: 0, accuracy: 100 });
     useEffect(() => {
-        if (showPreInfo || !engine.startTime || !isDrill) return;
+        statsRef.current = { wpm: engine.wpm, accuracy: engine.accuracy };
+    }, [engine.wpm, engine.accuracy]);
+
+    // Timer Logic (Refactored for Pause support)
+    useEffect(() => {
+        if (showPreInfo || !isDrill || isPaused) return;
+
+        // Ensure engine has started
+        if (!engine.startTime) {
+            // We rely on engine.handleKeyPress to start it usually, 
+            // but if we pause, we need to manage time independently of engine.startTime absolute diff.
+            // Actually, engine.startTime is used for WPM. 
+            // If we pause, WPM calculation in engine might get messed up because it uses (now - start).
+            // We might need to correct engine's duration used for WPM?
+            // For now, let's focus on the Countdown Timer.
+        }
 
         const interval = setInterval(() => {
-            const elapsedSeconds = Math.floor((Date.now() - engine.startTime) / 1000);
-            const remaining = Math.max(0, DURATION_SECONDS - elapsedSeconds);
-            setTimeLeft(remaining);
-
-            if (remaining === 0) {
-                // Time's up!
-                saveLessonProgress(section.id.split('.')[0], section.id, { wpm: engine.wpm, accuracy: engine.accuracy });
-                onComplete();
-            }
+            setTimeLeft((prev) => {
+                if (prev <= 1) { // Changed to <= 1 to catch the transition to 0 neatly
+                    clearInterval(interval);
+                    saveLessonProgress(section.id.split('.')[0], section.id, statsRef.current);
+                    onComplete();
+                    return 0;
+                }
+                return prev - 1;
+            });
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [engine.startTime, isDrill, showPreInfo, onComplete, saveLessonProgress, section.id, engine.wpm, engine.accuracy]);
+    }, [isDrill, showPreInfo, isPaused, onComplete, saveLessonProgress, section.id]); // Removed engine/stats from deps
+
+    // Auto-Pause Monitor
+    useEffect(() => {
+        if (showPreInfo || isPaused || !isDrill) return;
+
+        const checkActivity = setInterval(() => {
+            if (Date.now() - lastActivityRef.current > 15000) {
+                setIsPaused(true);
+            }
+        }, 1000);
+
+        return () => clearInterval(checkActivity);
+    }, [isPaused, showPreInfo, isDrill]);
+
+    // Sync Pause State with Engine for WPM correctness
+    useEffect(() => {
+        if (isPaused) {
+            engine.pause();
+        } else {
+            engine.resume();
+        }
+    }, [isPaused, engine]);
+
+    const [wrongKey, setWrongKey] = useState(null);
 
     // Keyboard Hook
     useEffect(() => {
@@ -45,7 +88,7 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
             const handleSpace = (e) => {
                 if (e.code === 'Space') {
                     setShowPreInfo(false);
-                    // Prevent default to avoid scrolling or instant double input
+                    lastActivityRef.current = Date.now();
                     e.preventDefault();
                 }
             };
@@ -54,6 +97,18 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
         }
 
         const handleKeyDown = (e) => {
+            if (isPaused) {
+                // Optional: Allow Space to resume
+                if (e.code === 'Space') {
+                    setIsPaused(false);
+                    lastActivityRef.current = Date.now();
+                    e.preventDefault();
+                }
+                return;
+            }
+
+            lastActivityRef.current = Date.now();
+
             if (showPreInfo) {
                 if ((section.type === 'info' || section.type === 'new_keys') && e.key === ' ') {
                     const content = section.content;
@@ -68,28 +123,75 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
                 return;
             }
 
-            // Prevent default for special keys
-            if (e.key === ' ' || e.key.length === 1) {
-                // e.preventDefault(); 
-            }
-            engine.handleKeyPress(e.key);
+            // Blocking Mode Logic (Stop-on-Error)
+            const effectiveCursor = engine.cursor % content.length;
+            const expectedChar = isDrill ? content[effectiveCursor] : (section.content ? section.content[engine.cursor] : null);
 
-            // For non-drills (standard flow), check finish
-            if (!isDrill && engine.isFinished) {
-                onComplete();
+            // Normalize comparison
+            let inputKey = e.key;
+            let targetKey = expectedChar;
+
+            // Simple check to ignore modifier keys alone (Shift, Control, etc.)
+            if (inputKey.length > 1 && inputKey !== 'Enter' && inputKey !== 'Backspace') return;
+
+            // If we are finished (non-drill), ignore
+            if (!isDrill && engine.isFinished) return;
+            if (!expectedChar) return; // changing section or done
+
+            // Check if match
+            // Note: engine handles \n as 'Enter' input usually, or just '\n'
+            // We need to match what the user types physically
+
+            const isMatch = (inputKey === targetKey) || (targetKey === '\n' && inputKey === 'Enter');
+
+            if (isMatch) {
+                setWrongKey(null);
+                playSound('click'); // Play click sound
+                engine.handleKeyPress(e.key);
+
+                // For non-drills check finish
+                if (!isDrill && engine.cursor + 1 >= (section.content?.length || 0)) {
+                    // Check completion
+                }
+
+            } else {
+                // Wrong key!
+                e.preventDefault();
+                setWrongKey(inputKey);
+                playSound('error'); // Play error sound
+                engine.registerError(); // Report error for accuracy
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [engine, showPreInfo, onComplete, section, isDrill, infoPage]);
+    }, [engine, showPreInfo, onComplete, section, isDrill, infoPage, content, wrongKey]);
+
+    // Separate effect for completion
+    useEffect(() => {
+        if (!isDrill && engine.isFinished) {
+            onComplete();
+        }
+    }, [engine.isFinished, isDrill, onComplete]);
+
 
     // Active Logic
     const effectiveCursor = engine.cursor % content.length;
     const currentChar = isDrill ? content[effectiveCursor] : (section.content ? section.content[engine.cursor] : null);
     const activeFinger = getFingerForChar(currentChar);
 
-    // Info / New Keys Mode (Overlay)
+    // ... (Info/New Keys render logic remains the same, skipping for brevity in this replace block if possible, but tool requires contiguous)
+    // Actually I can't skip the middle chunks easily with replace_file_content if I want to keep the file valid. 
+    // I will use `multi_replace_file_content` or just include the middle part if it's small? 
+    // It's large (lines 93-222).
+    // I will use `replace_file_content` just for the hook part, and then another for the render part.
+    // This call only targets the HOOK part (lines 42-85 replacement).
+
+    // WAIT. I used `replace_file_content`. I need to be careful. 
+    // The previous tool call was for `handleKeyDown` logic. 
+    // I will return the replacement just for that block.
+
+    // ... Existing Info Render Logic ...
     if (section.type === 'info' || section.type === 'new_keys') {
         const content = section.content;
         const isPaginated = Array.isArray(content);
@@ -228,89 +330,122 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
-    // Slice content for display (Current line + next lines)
-    // We want to simulate the view in strings.
-    // Let's create a "window" around the cursor.
-    // For infinite loop, we construct a virtual string.
-    const displayWindowStart = Math.floor(engine.cursor / 50) * 50; // Simple paging
-    // Actually, user wants continuous match.
-    // Let's just show 3 lines: Previous (if any), Current, Next.
-
-    // Construct display text dynamically for infinite scrolling feel
-    // Text Rendering Logic
-    // We want to show a history of what was typed (correct/incorrect) and the future text.
-    // Since it's infinite, we only show standard window around cursor.
-
-    const WINDOW_SIZE = 200;
-    const startWindow = Math.max(0, engine.cursor - 50);
-    const endWindow = engine.cursor + 150;
+    // Text Rendering Logic for "Big and Clear"
+    // We only show a limited window to focus the user (Short Bursts)
+    const WINDOW_SIZE = 15; // Shorter window to fit 8xl text on single line
+    const startWindow = engine.cursor; // Start EXACTLY at the cursor (hide past)
+    const endWindow = startWindow + WINDOW_SIZE;
 
     const renderChar = (char, index, absoluteIndex) => {
-        // Character from the source text
-
-        let status = 'future'; // future, correct, incorrect, current
+        let status = 'future';
         if (absoluteIndex === engine.cursor) status = 'current';
-        else if (absoluteIndex < engine.cursor) {
-            // We need to look at typedChars history?
-            // Actually engine.typedChars has the history.
-            // But typing engine stores 'typedChars' as a string.
-            // Wait, for infinite loop, typedChars might get out of sync with "content" index if we just map 1:1?
-            // In useTypingEngine, we logic that typedChars maps 1:1 to content[effectiveIndex].
 
-            // Check correctness from history if possible, OR just re-evaluate?
-            // Re-evaluating is cheaper for display.
-            const effectiveIdx = absoluteIndex % content.length;
-            const targetChar = content[effectiveIdx];
-            const typedChar = engine.typedChars[absoluteIndex]; // This works if typedChars tracks full history
+        let className = "inline-block transition-all duration-75 border-b-4 mx-1 ";
 
-            status = (typedChar === targetChar) ? 'correct' : 'incorrect';
+        if (status === 'current') {
+            // Current cursor highlight
+            className += "text-blue-900 border-blue-600 scale-125 font-black transform origin-bottom ";
+        } else {
+            // Future
+            className += "text-gray-500 border-transparent opacity-80 ";
         }
 
-        let className = "inline-block ";
-        if (status === 'current') className += "bg-blue-200 border-b-2 border-blue-600 text-black";
-        else if (status === 'correct') className += "text-green-600";
-        else if (status === 'incorrect') className += "text-red-600 bg-red-50";
-        else className += "text-gray-400";
-
-        // Handle Enter key visualization
         if (char === '\n') {
-            return (
-                <span key={absoluteIndex} className={className + " w-full block mb-2"}>
-                    <span className="opacity-30 text-xs">↵</span>
-                </span>
-            );
+            // Visible Enter Symbol
+            return <span key={absoluteIndex} className={className + " text-gray-400 font-sans"}>↵</span>;
         }
 
-        return <span key={absoluteIndex} className={className}>{char}</span>;
+        // Handle space
+        if (char === ' ') {
+            return <span key={absoluteIndex} className={className + " w-12 text-center"}>&nbsp;</span>;
+        } return <span key={absoluteIndex} className={className}>{char}</span>;
+    };
+
+    // Sound Effects
+    const playSound = (type) => {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            if (type === 'error') {
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.1);
+            } else {
+                // Click sound
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+                gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime); // Quieter click
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.05);
+            }
+        } catch (e) {
+            console.error("Audio Playback Error", e);
+        }
     };
 
     const renderedContent = (
-        <div className="text-2xl font-mono leading-relaxed break-words whitespace-pre-wrap select-none w-full outline-none" style={{ fontFamily: '"Courier New", Courier, monospace' }}>
-            {Array.from({ length: endWindow - startWindow }).map((_, i) => {
-                const absoluteIndex = startWindow + i;
-                const char = content[absoluteIndex % content.length];
-                return renderChar(char, i, absoluteIndex);
-            })}
+        <div className="flex items-center justify-center w-full h-full p-8 overflow-hidden select-none outline-none">
+            <div className="text-8xl font-mono leading-none tracking-wider whitespace-nowrap flex items-center justify-center">
+                {Array.from({ length: WINDOW_SIZE }).map((_, i) => {
+                    const absoluteIndex = startWindow + i;
+                    const effectiveIdx = absoluteIndex % content.length;
+                    const char = content[effectiveIdx] || ' '; // Fallback safely
+                    return renderChar(char, i, absoluteIndex);
+                })}
+            </div>
         </div>
     );
 
-
     return (
-        <div className="flex h-screen bg-blue-50 overflow-hidden font-sans">
+        <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
             {/* LEFT PANE: Content & Keyboard */}
-            <div className="flex-1 flex flex-col p-6 gap-6">
+            <div className="flex-1 flex flex-col p-8 gap-4 relative">
+                {/* Paused Overlay */}
+                {isPaused && (
+                    <div className="absolute inset-0 z-50 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
+                        <h2 className="text-4xl font-bold text-blue-900 mb-4">Drill Paused</h2>
+                        <p className="text-gray-600 text-lg mb-8">Inactive for more than 15s or manually paused.</p>
+                        <button
+                            onClick={() => { setIsPaused(false); lastActivityRef.current = Date.now(); }}
+                            className="bg-blue-600 text-white px-8 py-3 rounded-full text-xl font-bold shadow-xl hover:bg-blue-700 hover:scale-105 transition transform animate-bounce"
+                        >
+                            Resume Drill
+                        </button>
+                        <p className="mt-4 text-sm text-gray-500">Press Space to Resume</p>
+                    </div>
+                )}
+
                 {/* Text Area */}
-                <div className="flex-1 bg-white rounded-xl shadow-sm border border-blue-100 p-8 flex items-start overflow-hidden relative">
-                    {/* We need a better text renderer for the looping content to look stable */}
-                    {/* Let's try a simple block that shifts? Or just static text for now? */}
-                    {/* User wants "Keep matching". Simple approach: Always show next X chars. */}
+                <div className="flex-1 bg-white rounded-2xl shadow-lg border border-slate-200 flex items-center justify-center overflow-hidden relative min-h-[200px]">
                     {renderedContent}
                 </div>
 
-                {/* Keyboard Area */}
-                <div className="h-1/3 bg-white rounded-xl shadow-sm border border-blue-100 p-4 flex items-center justify-center">
+                {/* Keyboard & Hands Area */}
+                <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-4 flex flex-col items-center justify-center gap-4">
                     <div className="scale-90 origin-bottom">
-                        <VirtualKeyboard activeKeys={currentChar ? [currentChar.toLowerCase()] : []} pressedKey={null} />
+                        <VirtualKeyboard
+                            activeKeys={currentChar ? [currentChar.toLowerCase()] : []}
+                            wrongKey={wrongKey}
+                            pressedKey={null}
+                        />
+                    </div>
+
+                    {/* Hands Overlay */}
+                    <div className="scale-75 origin-top -mt-8">
+                        <HandsOverlay
+                            activeFinger={activeFinger}
+                            activeFingers={[]}
+                        />
                     </div>
                 </div>
             </div>
@@ -358,7 +493,16 @@ const DrillScreen = ({ section, onComplete, onClose }) => {
                 <div>
                     <div className="mb-6 border-t border-blue-200 pt-6">
                         <p className="font-bold text-gray-700 mb-2">Time</p>
-                        <p className="text-4xl font-bold font-mono text-gray-900">{formatTime(timeLeft)}</p>
+                        <div className="flex items-center justify-between">
+                            <p className="text-4xl font-bold font-mono text-gray-900">{formatTime(timeLeft)}</p>
+                            <button
+                                onClick={() => setIsPaused(!isPaused)}
+                                className={`p-2 rounded-full ${isPaused ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'}`}
+                                title={isPaused ? "Resume" : "Pause"}
+                            >
+                                {isPaused ? '▶' : 'II'}
+                            </button>
+                        </div>
                     </div>
 
                     <div className="space-y-3">

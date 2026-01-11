@@ -22,8 +22,8 @@ const LoginPage = () => {
                     <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-4 text-white text-3xl font-bold shadow-lg">
                         T
                     </div>
-                    <h1 className="text-3xl font-bold text-gray-800">TypingMaster</h1>
-                    <p className="text-gray-500">Pro Edition</p>
+                    <h1 className="text-3xl font-bold text-gray-800">Riyaz's TypingMaster</h1>
+                    <p className="text-gray-500">LLM</p>
                 </div>
 
                 <form onSubmit={handleLogin} className="space-y-6">
